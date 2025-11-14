@@ -1,4 +1,4 @@
-# pimd_langevin_test_results
-This repo stores the test results and reference output for fix pimd/langevin in LAMMPS.
+# LAMMPS_fix_pimd_langevin
+This repo stores the examples for fix pimd/langevin in LAMMPS. Please refer to [fix pimd](https://docs.lammps.org/fix_pimd.html) for documentation.
 
-The aim of this repo is to store the reference output of fix pimd/langevin in https://github.com/lammps/lammps/pull/3660.
+This repo is accompanied by the paper *fix pimd/langevin: An Efficient Implementation of Path Integral Molecular Dynamics in LAMMPS*.
