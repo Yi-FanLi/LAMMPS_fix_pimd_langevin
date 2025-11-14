@@ -1,0 +1,89 @@
+clear
+### bulk water
+# ---------------------- VAVIABLE DEFINITION ------------------
+### Thermodynamic conditions
+variable        TEMP            equal 350.000000
+variable        PRES            equal 1.00000
+
+### Simulation settings
+variable        ibead           uloop 32 pad
+variable        BETA            equal 0.4   # should be same as the setting while training
+variable        KMESH           equal 64    # should be twice the box size in Angs
+variable        dt              equal 0.0005
+variable        NSTEPS          equal 200000
+variable        TAU_T           equal 100*${dt}
+variable        TAU_P           equal 1000*${dt}
+variable        OUT_FREQ        equal 100
+
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      full
+
+# the neighbor list between real (1) and its corresponding virtual
+# type (3) should be excluded
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no exclude type 1 3
+
+# --------------------- ATOM DEFINITION ------------------
+read_data       conf.lmp
+#replicate       1 1 1
+#read_restart    tmp.restart.2
+
+# groups of real and virtual atoms
+group           real_atom type 1 2
+group           virtual_atom type 3
+
+# --------------------- FORCE FIELDS ---------------------
+# bond between real and its corresponding virtual site should be given
+# to setup a map between real and virtual atoms. However, no real
+# bonded interaction is applied, thus bond_sytle "zero" is used.
+pair_style      deepmd ../scan0_lr.pb
+pair_coeff      * *
+bond_style      zero
+bond_coeff      *
+special_bonds   lj/coul 1 1 1 angle no
+
+# kspace_style "pppm/dplr" should be used. in addition the
+# gewald(1/distance) should be set the same as that used in
+# training. Currently only ik differentiation is supported.
+kspace_style    pppm/dplr 1e-5
+kspace_modify   gewald ${BETA} diff ik mesh ${KMESH} ${KMESH} ${KMESH}
+
+# "fix dplr" set the position of the virtual atom, and spread the
+# electrostatic interaction asserting on the virtual atom to the real
+# atoms. "type_associate" associates the real atom type the its
+# corresponding virtual atom type. "bond_type" gives the type of the
+# bond between the real and virtual atoms.
+fix             0 all dplr model ../scan0_lr.pb type_associate 1 3 bond_type 1
+fix_modify      0 virial yes
+
+# --------------------- COMPUTE SETTINGS ----------------------
+# compute the temperature of real atoms, excluding virtual atom contribution
+compute         real_temp real_atom temp
+compute         real_press all pressure real_temp
+
+compute         dipole real_atom deeptensor/atom ../wfc_lr.pb
+
+# --------------------- MD SETTINGS ----------------------
+timestep        ${dt}
+
+velocity        all create ${TEMP} 9234${ibead} dist gaussian
+
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp ${TEMP} thermostat PILE_L 12${ibead} tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P}
+
+# --------------------- OUTPUT SETTINGS ----------------------
+thermo_style    custom step temp f_1[4] f_1[1] f_1[2] f_1[3] f_1[7] vol f_1[10]
+thermo_modify   temp real_temp
+thermo          ${OUT_FREQ}
+
+dump            1 real_atom custom ${OUT_FREQ} water_${ibead}.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump_modify     1 first yes sort id
+
+restart         10000 restart_${ibead}.inter.1 restart_${ibead}.inter.2
+
+# --------------------- RUN ----------------------
+run             ${NSTEPS}
+
+write_data      final_${ibead}.lmp nocoeff
+write_restart   restart_${ibead}.lmp
