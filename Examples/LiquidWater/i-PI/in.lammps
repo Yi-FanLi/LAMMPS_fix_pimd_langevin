@@ -1,0 +1,40 @@
+variable ibead uloop 32 pad
+variable        NSTEPS          equal 40000000
+#variable        NSTEPS          equal 1
+variable        THERMO_FREQ     equal 1
+variable        DUMP_FREQ     equal 1
+variable        TEMP            equal 300
+variable        TAU_T           equal 0.01
+
+units           metal
+boundary        p p p
+atom_style      atomic
+atom_modify     map array
+
+read_data conf.lmp
+neigh_modify check no delay 0 every 10
+
+mass 1 15.9994
+mass 2 1.00794
+
+pair_style	deepmd ../graph.pb
+pair_coeff      * *
+
+#velocity        all create 300 23456789
+
+fix 1 all ipi 01 1201 unix
+#fix 1 all nve
+thermo_style custom step temp ke pe etotal lx ly lz vol
+
+# rdf calculation 
+#compute         rdf all rdf 200 1 1 1 2 2 2
+#fix             2 all ave/time 10 1 10 c_rdf[*] file ${ibead}.rdf mode vector
+
+#dump 1 all custom ${DUMP_FREQ} dump.equi id type x y z 
+#dump_modify 1 sort id
+
+thermo ${THERMO_FREQ}
+thermo_modify norm no format line "%d %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f "
+
+timestep        0.000500
+run             ${NSTEPS}
