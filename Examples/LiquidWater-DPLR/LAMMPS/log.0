@@ -1,0 +1,480 @@
+LAMMPS (10 Sep 2025 - Development - patch_10Sep2025-291-gb5c3affdfb-modified)
+Processor partition = 0
+  using 1 OpenMP thread(s) per MPI task
+### bulk water
+# ---------------------- VAVIABLE DEFINITION ------------------
+### Thermodynamic conditions
+variable        TEMP            equal 350.000000
+variable        PRES            equal 1.00000
+
+### Simulation settings
+variable        ibead           uloop 32 pad
+variable        BETA            equal 0.4   # should be same as the setting while training
+variable        KMESH           equal 64    # should be twice the box size in Angs
+variable        dt              equal 0.0005
+variable        NSTEPS          equal 500
+variable        TAU_T           equal 100*${dt}
+variable        TAU_T           equal 100*0.0005
+variable        TAU_P           equal 1000*${dt}
+variable        TAU_P           equal 1000*0.0005
+variable        OUT_FREQ        equal 100
+
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      full
+
+# the neighbor list between real (1) and its corresponding virtual
+# type (3) should be excluded
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no exclude type 1 3
+
+# --------------------- ATOM DEFINITION ------------------
+read_data       conf.lr
+Reading data file ...
+  orthogonal box = (-0.31180958 -0.31180958 -0.31180958) to (15.31181 15.31181 15.31181)
+  1 by 1 by 1 MPI processor grid
+WARNING: Atom style in data file atomic differs from currently defined atom style full (src/read_data.cpp:727)
+  reading atoms ...
+  512 atoms
+  scanning bonds ...
+  1 = max bonds/atom
+  orthogonal box = (-0.31180958 -0.31180958 -0.31180958) to (15.31181 15.31181 15.31181)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  128 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.005 seconds
+#replicate       1 1 1
+#read_restart    tmp.restart.2
+
+# groups of real and virtual atoms
+group           real_atom type 1 2
+384 atoms in group real_atom
+group           virtual_atom type 3
+128 atoms in group virtual_atom
+
+# --------------------- FORCE FIELDS ---------------------
+# bond between real and its corresponding virtual site should be given
+# to setup a map between real and virtual atoms. However, no real
+# bonded interaction is applied, thus bond_sytle "zero" is used.
+pair_style      deepmd ./frozen_model.pb  #../frozen_model_2.pb ../frozen_model_3.pb ../frozen_model_4.pb out_file md.out OUT_FREQ ${OUT_FREQ}
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /global/homes/k/kehanc/Software/DeePMD/deepmd-kit/install_exe
+  source:             v3.1.0-91-g58f60c45
+  source branch:      devel
+  source commit:      58f60c45
+  source commit at:   2025-09-23 03:11:19 +0000
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include;/global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include
+  build with tf lib:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /global/homes/k/kehanc/Software/LAMMPS/lammps/install_exe
+  source:             
+  source branch:      
+  source commit:      
+  source commit at:   
+  build with inc:     
+  build with lib:     
+pair_coeff      * *
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+bond_style      zero
+bond_coeff      *
+special_bonds   lj/coul 1 1 1 angle no
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    1        1        1       
+  special bond factors coul:  1        1        1       
+     1 = max # of 1-2 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+
+# kspace_style "pppm/dplr" should be used. in addition the
+# gewald(1/distance) should be set the same as that used in
+# training. Currently only ik differentiation is supported.
+kspace_style    pppm/dplr 1e-5
+kspace_modify   gewald ${BETA} diff ik mesh ${KMESH} ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh ${KMESH} ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 64 ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 64 64
+
+# "fix dplr" set the position of the virtual atom, and spread the
+# electrostatic interaction asserting on the virtual atom to the real
+# atoms. "type_associate" associates the real atom type the its
+# corresponding virtual atom type. "bond_type" gives the type of the
+# bond between the real and virtual atoms.
+fix             0 all dplr model ./frozen_model.pb type_associate 1 3 bond_type 1
+fix_modify      0 virial yes
+
+# --------------------- COMPUTE SETTINGS ----------------------
+# compute the temperature of real atoms, excluding virtual atom contribution
+compute         real_temp real_atom temp
+compute         real_press all pressure real_temp
+
+compute         dipole real_atom deeptensor/atom ../../../model/wfc_lr.pb
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /global/homes/k/kehanc/Software/DeePMD/deepmd-kit/install_exe
+  source:             v3.1.0-91-g58f60c45
+  source branch:      devel
+  source commit:      58f60c45
+  source commit at:   2025-09-23 03:11:19 +0000
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include;/global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include
+  build with tf lib:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /global/homes/k/kehanc/Software/LAMMPS/lammps/install_exe
+  source:             
+  source branch:      
+  source commit:      
+  source commit at:   
+  build with inc:     
+  build with lib:     
+
+# --------------------- MD SETTINGS ----------------------
+timestep        ${dt}
+timestep        0.0005
+
+velocity        all create ${TEMP} 9234${ibead} dist gaussian
+velocity        all create 350 9234${ibead} dist gaussian
+velocity        all create 350 923401 dist gaussian
+#velocity        real_atom zero linear
+
+#fix             1 all npt temp ${TEMP} ${TEMP} ${TAU_T} iso ${PRES} ${PRES} ${TAU_P}
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp ${TEMP} thermostat PILE_L 12${ibead} tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} #fixcom yes
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 12${ibead} tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso 1 barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso 1 barostat BZP taup 0.5 
+
+Initializing PIMD BZP barostat...
+  The barostat mass is W = 2.7796101580800001e+02
+#fix_modify      1 temp real_temp press real_press      # fix pimd/langevin does not support fix_modify
+
+# --------------------- OUTPUT SETTINGS ----------------------
+thermo_style    custom step temp f_1[4] f_1[1] f_1[2] f_1[3] f_1[7] vol f_1[10]     # f_1[4] = f_1[1] + f_1[2] + f_1[3], E = f_1[3] + f_1[7]
+thermo_modify   temp real_temp #press real_press    # here does not use "press" for pressure, but use "f_1[10]"
+WARNING: Temperature for thermo pressure is not for group all (src/thermo.cpp:570)
+thermo          ${OUT_FREQ}
+thermo          100
+#thermo_modify   flush yes
+
+dump            1 real_atom custom ${OUT_FREQ} traj/water_${ibead}.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump            1 real_atom custom 100 traj/water_${ibead}.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump            1 real_atom custom 100 traj/water_01.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump_modify     1 first yes sort id #append yes
+
+restart         10000 restart/restart_${ibead}.inter.1 restart/restart_${ibead}.inter.2
+restart         10000 restart/restart_01.inter.1 restart/restart_${ibead}.inter.2
+restart         10000 restart/restart_01.inter.1 restart/restart_01.inter.2
+
+# --------------------- RUN ----------------------
+#timer           timeout 1:50:00 every 100
+run             ${NSTEPS}
+run             500
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- USER-DEEPMD package:
+
+@article{Wang_ComputPhysCommun_2018_v228_p178,
+  author = {Wang, Han and Zhang, Linfeng and Han, Jiequn and E, Weinan},
+  doi = {10.1016/j.cpc.2018.03.016},
+  url = {https://doi.org/10.1016/j.cpc.2018.03.016},
+  year = 2018,
+  month = {jul},
+  publisher = {Elsevier {BV}},
+  volume = 228,
+  journal = {Comput. Phys. Commun.},
+  title = {{DeePMD-kit: A deep learning package for many-body potential energy representation and molecular dynamics}},
+  pages = {178--184}
+}
+@article{Zeng_JChemPhys_2023_v159_p054801,
+  title  = {{DeePMD-kit v2: A software package for deep potential models}},
+  author =   {Jinzhe Zeng and Duo Zhang and Denghui Lu and Pinghui Mo and Zeyu Li
+         and Yixiao Chen and Mari{\'a}n Rynik and Li'ang Huang and Ziyao Li and 
+         Shaochen Shi and Yingze Wang and Haotian Ye and Ping Tuo and Jiabin
+         Yang and Ye Ding and Yifan Li and Davide Tisi and Qiyu Zeng and Han 
+         Bao and Yu Xia and Jiameng Huang and Koki Muraoka and Yibo Wang and 
+         Junhan Chang and Fengbo Yuan and Sigbj{\o}rn L{\o}land Bore and Chun
+         Cai and Yinnian Lin and Bo Wang and Jiayan Xu and Jia-Xin Zhu and 
+         Chenxing Luo and Yuzhi Zhang and Rhys E A Goodall and Wenshuo Liang
+         and Anurag Kumar Singh and Sikai Yao and Jingchao Zhang and Renata
+         Wentzcovitch and Jiequn Han and Jie Liu and Weile Jia and Darrin M
+         York and Weinan E and Roberto Car and Linfeng Zhang and Han Wang},
+  journal =  {J. Chem. Phys.},
+  volume =   159,
+  issue =    5,  
+  year =    2023,
+  pages  =   054801,
+  doi =      {10.1063/5.0155600},
+}
+@Article{Zeng_JChemTheoryComput_2025_v21_p4375,
+  author =   {Jinzhe Zeng and Duo Zhang and Anyang Peng and Xiangyu Zhang and Sensen
+             He and Yan Wang and Xinzijian Liu and Hangrui Bi and Yifan Li and Chun
+             Cai and Chengqian Zhang and Yiming Du and Jia-Xin Zhu and Pinghui Mo
+             and Zhengtao Huang and Qiyu Zeng and Shaochen Shi and Xuejian Qin and
+             Zhaoxi Yu and Chenxing Luo and Ye Ding and Yun-Pei Liu and Ruosong Shi
+             and Zhenyu Wang and Sigbj{\o}rn L{\o}land Bore and Junhan Chang and
+             Zhe Deng and Zhaohan Ding and Siyuan Han and Wanrun Jiang and Guolin
+             Ke and Zhaoqing Liu and Denghui Lu and Koki Muraoka and Hananeh Oliaei
+             and Anurag Kumar Singh and Haohui Que and Weihong Xu and Zhangmancang
+             Xu and Yong-Bin Zhuang and Jiayu Dai and Timothy J. Giese and Weile
+             Jia and Ben Xu and Darrin M. York and Linfeng Zhang and Han Wang},
+    title =    {{DeePMD-kit v3: A Multiple-Backend Framework for Machine Learning
+             Potentials}},
+  journal =  {J. Chem. Theory Comput.},
+  year =     2025,
+  volume =   21,
+  number =   9,
+  pages =    {4375--4385},
+  doi =      {10.1021/acs.jctc.5c00340},
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.34615663
+  estimated relative force accuracy = 0.024039247
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8
+  ghost atom cutoff = 8
+  binsize = 4, bins = 4 4 4
+  2 neighbor lists, perpetual/occasional/extra = 1 1 0
+  (1) pair deepmd, perpetual
+      attributes: full, newton on
+      pair build: full/bin
+      stencil: full/bin/3d
+      bin: standard
+  (2) compute deeptensor/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 46.45 | 46.45 | 46.45 Mbytes
+   Step          Temp          f_1[4]         f_1[1]         f_1[2]         f_1[3]         f_1[7]         Volume        f_1[10]    
+         0   358.01644     -1916110.6      17.724189      0             -59895.888      17.372563      3813.686       958.57347    
+       100   9978.4608     -1881244.3      494.00002      0             -59862.556      48.613754      3811.8418     -231.79259    
+       200   11004.25      -1881494.3      544.7834       0             -59856.978      47.238025      3802.1471     -4548.8353    
+       300   11361.58      -1881468.8      562.4736       0             -59860.67       48.530275      3853.6533     -3947.045     
+       400   11622.759     -1881259.3      575.40367      0             -59865.332      47.750468      3872.2385     -128.45796    
+       500   11351.481     -1881134.1      561.97362      0             -59859.792      49.085374      3876.3735     -4012.9743    
+Loop time of 131.434 on 1 procs for 500 steps with 512 atoms
+
+Performance: 0.164 ns/day, 146.038 hours/ns, 3.804 timesteps/s, 1.948 katom-step/s
+98.9% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 18.324     | 18.324     | 18.324     |   0.0 | 13.94
+Bond    | 0.00090304 | 0.00090304 | 0.00090304 |   0.0 |  0.00
+Kspace  | 46.352     | 46.352     | 46.352     |   0.0 | 35.27
+Neigh   | 0.41515    | 0.41515    | 0.41515    |   0.0 |  0.32
+Comm    | 0.028417   | 0.028417   | 0.028417   |   0.0 |  0.02
+Output  | 0.3321     | 0.3321     | 0.3321     |   0.0 |  0.25
+Modify  | 65.97      | 65.97      | 65.97      |   0.0 | 50.19
+Other   |            | 0.01069    |            |       |  0.01
+
+Nlocal:            512 ave         512 max         512 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           3696 ave        3696 max        3696 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:       126594 ave      126594 max      126594 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 126594
+Ave neighs/atom = 247.25391
+Ave special neighs/atom = 0.5
+Neighbor list builds = 50
+Dangerous builds not checked
+
+write_data      final_data/final_${ibead}.lmp nocoeff
+write_data      final_data/final_01.lmp nocoeff
+System init for write_data ...
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.34334625
+  estimated relative force accuracy = 0.023844078
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+write_restart   final_restart/restart_${ibead}.lmp
+write_restart   final_restart/restart_01.lmp
+System init for write_restart ...
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.34334625
+  estimated relative force accuracy = 0.023844078
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+Total wall time: 0:02:25

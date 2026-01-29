@@ -15,4 +15,4 @@
 export SLURM_CPU_BIND=cores
 module load python
 conda activate dp-pimd-devel
-srun --mpi=pmi2 --gpu-bind=map_gpu:0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3 ./mps-wrapper.sh lmp -in in.lammps -p 32x1 -log log -screen screen
+srun --mpi=pmi2 --gpu-bind=map_gpu:0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3 lmp -in in.lammps -p 32x1 -log log -screen screen
