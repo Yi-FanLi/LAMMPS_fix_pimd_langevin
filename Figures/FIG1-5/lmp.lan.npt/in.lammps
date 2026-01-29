@@ -1,0 +1,36 @@
+clear
+# --------------------- VARIABLES-------------------------
+variable        ibead           uloop 99 pad
+variable        NSTEPS          equal 2000000
+variable        THERMO_FREQ     equal 100
+variable        DUMP_FREQ       equal 100
+variable        NREPEAT         equal ${NSTEPS}/${DUMP_FREQ}
+variable        TEMP            equal 300.000000
+variable        PRES            equal 1.000000
+variable        TAU_T           equal 0.100000
+variable        TAU_P           equal 0.500000
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+# --------------------- ATOM DEFINITION ------------------
+read_data       conf.lmp
+#mass            1 16.000000
+#mass            2 1.000000
+# --------------------- FORCE FIELDS ---------------------
+pair_style      deepmd ../graph.pb
+pair_coeff * *
+# --------------------- MD SETTINGS ----------------------
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+timestep        0.000500
+dump            1 all custom ${DUMP_FREQ} ${ibead}.xyz id type x y z
+dump_modify     1 sort id
+fix 1 all pimd/langevin ensemble npt integrator obabo temp ${TEMP} thermostat PILE_L 1234 tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P}
+thermo          ${THERMO_FREQ}
+thermo_style    custom step temp pe vol lx ly lz density f_1[*]
+thermo_modify   format step %ld format 2* "%.6e"
+# --------------------- RUN ------------------------------
+run             ${NSTEPS}
+write_data      final.${ibead}
