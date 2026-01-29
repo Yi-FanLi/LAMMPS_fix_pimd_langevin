@@ -1,0 +1,675 @@
+LAMMPS (10 Sep 2025 - Development - patch_10Sep2025-291-gb5c3affdfb-modified)
+Processor partition = 0
+  using 1 OpenMP thread(s) per MPI task
+### bulk water
+# ---------------------- VAVIABLE DEFINITION ------------------
+### Thermodynamic conditions
+variable        TEMP            equal 350.000000
+variable        PRES            equal 1.00000
+
+### Simulation settings
+variable        ibead           uloop 32 pad
+variable        BETA            equal 0.4   # should be same as the setting while training
+variable        KMESH           equal 64    # should be twice the box size in Angs
+variable        dt              equal 0.0005
+variable        NSTEPS          equal 20000
+variable        TAU_T           equal 100*${dt}
+variable        TAU_T           equal 100*0.0005
+variable        TAU_P           equal 1000*${dt}
+variable        TAU_P           equal 1000*0.0005
+variable        OUT_FREQ        equal 100
+
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      full
+
+# the neighbor list between real (1) and its corresponding virtual
+# type (3) should be excluded
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no exclude type 1 3
+
+# --------------------- ATOM DEFINITION ------------------
+read_data       conf.lr
+Reading data file ...
+  orthogonal box = (-0.31180958 -0.31180958 -0.31180958) to (15.31181 15.31181 15.31181)
+  1 by 1 by 1 MPI processor grid
+WARNING: Atom style in data file atomic differs from currently defined atom style full (src/read_data.cpp:727)
+  reading atoms ...
+  512 atoms
+  scanning bonds ...
+  1 = max bonds/atom
+  orthogonal box = (-0.31180958 -0.31180958 -0.31180958) to (15.31181 15.31181 15.31181)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  128 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.004 seconds
+#replicate       1 1 1
+#read_restart    tmp.restart.2
+
+# groups of real and virtual atoms
+group           real_atom type 1 2
+384 atoms in group real_atom
+group           virtual_atom type 3
+128 atoms in group virtual_atom
+
+# --------------------- FORCE FIELDS ---------------------
+# bond between real and its corresponding virtual site should be given
+# to setup a map between real and virtual atoms. However, no real
+# bonded interaction is applied, thus bond_sytle "zero" is used.
+pair_style      deepmd ./frozen_model.pb  #../frozen_model_2.pb ../frozen_model_3.pb ../frozen_model_4.pb out_file md.out OUT_FREQ ${OUT_FREQ}
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /global/homes/k/kehanc/Software/DeePMD/deepmd-kit/install_exe
+  source:             v3.1.0-91-g58f60c45
+  source branch:      devel
+  source commit:      58f60c45
+  source commit at:   2025-09-23 03:11:19 +0000
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include;/global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include
+  build with tf lib:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /global/homes/k/kehanc/Software/LAMMPS/lammps/install_exe
+  source:             
+  source branch:      
+  source commit:      
+  source commit at:   
+  build with inc:     
+  build with lib:     
+pair_coeff      * *
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_deepmd.cpp:884)
+bond_style      zero
+bond_coeff      *
+special_bonds   lj/coul 1 1 1 angle no
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    1        1        1       
+  special bond factors coul:  1        1        1       
+     1 = max # of 1-2 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+
+# kspace_style "pppm/dplr" should be used. in addition the
+# gewald(1/distance) should be set the same as that used in
+# training. Currently only ik differentiation is supported.
+kspace_style    pppm/dplr 1e-5
+kspace_modify   gewald ${BETA} diff ik mesh ${KMESH} ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh ${KMESH} ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 ${KMESH} ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 64 ${KMESH}
+kspace_modify   gewald 0.4 diff ik mesh 64 64 64
+
+# "fix dplr" set the position of the virtual atom, and spread the
+# electrostatic interaction asserting on the virtual atom to the real
+# atoms. "type_associate" associates the real atom type the its
+# corresponding virtual atom type. "bond_type" gives the type of the
+# bond between the real and virtual atoms.
+fix             0 all dplr model ./frozen_model.pb type_associate 1 3 bond_type 1
+fix_modify      0 virial yes
+
+# --------------------- COMPUTE SETTINGS ----------------------
+# compute the temperature of real atoms, excluding virtual atom contribution
+compute         real_temp real_atom temp
+compute         real_press all pressure real_temp
+
+compute         dipole real_atom deeptensor/atom ../../../model/wfc_lr.pb
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /global/homes/k/kehanc/Software/DeePMD/deepmd-kit/install_exe
+  source:             v3.1.0-91-g58f60c45
+  source branch:      devel
+  source commit:      58f60c45
+  source commit at:   2025-09-23 03:11:19 +0000
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include;/global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/include
+  build with tf lib:  /global/homes/k/kehanc/.conda/envs/deepmd-lmp/lib/python3.13/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /global/homes/k/kehanc/Software/LAMMPS/lammps/install_exe
+  source:             
+  source branch:      
+  source commit:      
+  source commit at:   
+  build with inc:     
+  build with lib:     
+
+# --------------------- MD SETTINGS ----------------------
+timestep        ${dt}
+timestep        0.0005
+
+velocity        all create ${TEMP} 9234${ibead} dist gaussian
+velocity        all create 350 9234${ibead} dist gaussian
+velocity        all create 350 923401 dist gaussian
+#velocity        real_atom zero linear
+
+#fix             1 all npt temp ${TEMP} ${TEMP} ${TAU_T} iso ${PRES} ${PRES} ${TAU_P}
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp ${TEMP} thermostat PILE_L 12${ibead} tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} #fixcom yes
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 12${ibead} tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau ${TAU_T} iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso ${PRES} barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso 1 barostat BZP taup ${TAU_P} 
+fix             1 real_atom pimd/langevin method nmpimd integrator obabo ensemble npt temp 350 thermostat PILE_L 1201 tau 0.05 iso 1 barostat BZP taup 0.5 
+
+Initializing PIMD BZP barostat...
+  The barostat mass is W = 2.7796101580800001e+02
+#fix_modify      1 temp real_temp press real_press      # fix pimd/langevin does not support fix_modify
+
+# --------------------- OUTPUT SETTINGS ----------------------
+thermo_style    custom step temp f_1[4] f_1[1] f_1[2] f_1[3] f_1[7] vol f_1[10]     # f_1[4] = f_1[1] + f_1[2] + f_1[3], E = f_1[3] + f_1[7]
+thermo_modify   temp real_temp #press real_press    # here does not use "press" for pressure, but use "f_1[10]"
+WARNING: Temperature for thermo pressure is not for group all (src/thermo.cpp:570)
+thermo          ${OUT_FREQ}
+thermo          100
+#thermo_modify   flush yes
+
+dump            1 real_atom custom ${OUT_FREQ} traj/water_${ibead}.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump            1 real_atom custom 100 traj/water_${ibead}.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump            1 real_atom custom 100 traj/water_01.dump id type x y z ix iy iz c_dipole[1] c_dipole[2] c_dipole[3]
+dump_modify     1 first yes sort id #append yes
+
+restart         10000 restart/restart_${ibead}.inter.1 restart/restart_${ibead}.inter.2
+restart         10000 restart/restart_01.inter.1 restart/restart_${ibead}.inter.2
+restart         10000 restart/restart_01.inter.1 restart/restart_01.inter.2
+
+# --------------------- RUN ----------------------
+#timer           timeout 1:50:00 every 100
+run             ${NSTEPS}
+run             20000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- USER-DEEPMD package:
+
+@article{Wang_ComputPhysCommun_2018_v228_p178,
+  author = {Wang, Han and Zhang, Linfeng and Han, Jiequn and E, Weinan},
+  doi = {10.1016/j.cpc.2018.03.016},
+  url = {https://doi.org/10.1016/j.cpc.2018.03.016},
+  year = 2018,
+  month = {jul},
+  publisher = {Elsevier {BV}},
+  volume = 228,
+  journal = {Comput. Phys. Commun.},
+  title = {{DeePMD-kit: A deep learning package for many-body potential energy representation and molecular dynamics}},
+  pages = {178--184}
+}
+@article{Zeng_JChemPhys_2023_v159_p054801,
+  title  = {{DeePMD-kit v2: A software package for deep potential models}},
+  author =   {Jinzhe Zeng and Duo Zhang and Denghui Lu and Pinghui Mo and Zeyu Li
+         and Yixiao Chen and Mari{\'a}n Rynik and Li'ang Huang and Ziyao Li and 
+         Shaochen Shi and Yingze Wang and Haotian Ye and Ping Tuo and Jiabin
+         Yang and Ye Ding and Yifan Li and Davide Tisi and Qiyu Zeng and Han 
+         Bao and Yu Xia and Jiameng Huang and Koki Muraoka and Yibo Wang and 
+         Junhan Chang and Fengbo Yuan and Sigbj{\o}rn L{\o}land Bore and Chun
+         Cai and Yinnian Lin and Bo Wang and Jiayan Xu and Jia-Xin Zhu and 
+         Chenxing Luo and Yuzhi Zhang and Rhys E A Goodall and Wenshuo Liang
+         and Anurag Kumar Singh and Sikai Yao and Jingchao Zhang and Renata
+         Wentzcovitch and Jiequn Han and Jie Liu and Weile Jia and Darrin M
+         York and Weinan E and Roberto Car and Linfeng Zhang and Han Wang},
+  journal =  {J. Chem. Phys.},
+  volume =   159,
+  issue =    5,  
+  year =    2023,
+  pages  =   054801,
+  doi =      {10.1063/5.0155600},
+}
+@Article{Zeng_JChemTheoryComput_2025_v21_p4375,
+  author =   {Jinzhe Zeng and Duo Zhang and Anyang Peng and Xiangyu Zhang and Sensen
+             He and Yan Wang and Xinzijian Liu and Hangrui Bi and Yifan Li and Chun
+             Cai and Chengqian Zhang and Yiming Du and Jia-Xin Zhu and Pinghui Mo
+             and Zhengtao Huang and Qiyu Zeng and Shaochen Shi and Xuejian Qin and
+             Zhaoxi Yu and Chenxing Luo and Ye Ding and Yun-Pei Liu and Ruosong Shi
+             and Zhenyu Wang and Sigbj{\o}rn L{\o}land Bore and Junhan Chang and
+             Zhe Deng and Zhaohan Ding and Siyuan Han and Wanrun Jiang and Guolin
+             Ke and Zhaoqing Liu and Denghui Lu and Koki Muraoka and Hananeh Oliaei
+             and Anurag Kumar Singh and Haohui Que and Weihong Xu and Zhangmancang
+             Xu and Yong-Bin Zhuang and Jiayu Dai and Timothy J. Giese and Weile
+             Jia and Ben Xu and Darrin M. York and Linfeng Zhang and Han Wang},
+    title =    {{DeePMD-kit v3: A Multiple-Backend Framework for Machine Learning
+             Potentials}},
+  journal =  {J. Chem. Theory Comput.},
+  year =     2025,
+  volume =   21,
+  number =   9,
+  pages =    {4375--4385},
+  doi =      {10.1021/acs.jctc.5c00340},
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.34615663
+  estimated relative force accuracy = 0.024039247
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8
+  ghost atom cutoff = 8
+  binsize = 4, bins = 4 4 4
+  2 neighbor lists, perpetual/occasional/extra = 1 1 0
+  (1) pair deepmd, perpetual
+      attributes: full, newton on
+      pair build: full/bin
+      stencil: full/bin/3d
+      bin: standard
+  (2) compute deeptensor/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 46.45 | 46.45 | 46.45 Mbytes
+   Step          Temp          f_1[4]         f_1[1]         f_1[2]         f_1[3]         f_1[7]         Volume        f_1[10]    
+         0   358.01644     -1916110.6      17.724189      0             -59895.888      17.372563      3813.686       958.57347    
+       100   9978.4608     -1881244.3      494.00002      0             -59862.556      48.613754      3811.8418     -231.79259    
+       200   11004.25      -1881494.3      544.7834       0             -59856.978      47.238025      3802.1471     -4548.8353    
+       300   11361.58      -1881468.8      562.4736       0             -59860.67       48.530275      3853.6533     -3947.045     
+       400   11622.759     -1881259.3      575.40367      0             -59865.332      47.750468      3872.2385     -128.45796    
+       500   11351.481     -1881134.1      561.97362      0             -59859.792      49.085374      3876.3735     -4012.9743    
+       600   10576.044     -1881316.4      523.58434      0             -59862.932      47.79874       3854.7126     -3699.7782    
+       700   11495.402     -1881486.6      569.09867      0             -59861.89       48.277717      3832.7434      185.23286    
+       800   10658.344     -1881650.2      527.65875      0             -59862.129      47.167149      3827.2595     -1609.2917    
+       900   11397.41      -1881523.7      564.24743      0             -59863.483      47.459979      3794.2249      1144.1997    
+      1000   12138.69      -1881299.1      600.94572      0             -59863.109      47.616518      3783.5638     -473.39842    
+      1100   10769.496     -1881197.1      533.16152      0             -59860.507      48.387163      3787.8253      1480.5174    
+      1200   11366.448     -1881115        562.71458      0             -59858.301      49.04337       3809.7874      622.31473    
+      1300   12640.985     -1881252.2      625.81265      0             -59856.792      47.961003      3821.9939     -1132.7026    
+      1400   11620.589     -1881098.2      575.29624      0             -59858.337      49.390797      3807.3104      2159.5935    
+      1500   11717.259     -1881345.7      580.08206      0             -59861.44       47.923284      3822.705       4520.0954    
+      1600   11264.846     -1881275.3      557.68463      0             -59858.012      48.293569      3844.9476      3734.4396    
+      1700   11677.412     -1881561.3      578.1094       0             -59859.112      49.555142      3864.998      -29.924609    
+      1800   11170.202     -1881127.8      552.99913      0             -59861.65       47.433639      3851.4602      5349.7694    
+      1900   11213.314     -1881134.3      555.13345      0             -59853.516      47.804829      3810.007       2982.5237    
+      2000   9993.5237     -1881157.4      494.74573      0             -59861.259      47.945961      3839.5665      774.98453    
+      2100   11102.969     -1881531.8      549.67062      0             -59860.185      47.755353      3924.377      -6673.3857    
+      2200   10953.883     -1881200.1      542.28987      0             -59859.08       49.239784      3940.4354      1621.934     
+      2300   10972.645     -1881196.5      543.21875      0             -59862.068      48.685764      3919.1551      573.71418    
+      2400   10993.935     -1881319.8      544.27275      0             -59858.295      49.45608       3904.1594      1065.5266    
+      2500   12288.008     -1881368.5      608.33791      0             -59858.484      48.326714      3885.9413      143.43284    
+      2600   11921.603     -1881411        590.19847      0             -59860.785      49.018459      3892.1157      695.12575    
+      2700   10732.607     -1881436.2      531.33524      0             -59859.073      47.688535      3949.9996     -7545.2837    
+      2800   11100.291     -1881267.2      549.53806      0             -59850.203      49.226698      3981.9888     -3290.0867    
+      2900   10799.019     -1881140.5      534.62309      0             -59858.397      48.495988      3935.5695     -1120.8865    
+      3000   11621.847     -1881014.6      575.35854      0             -59857.235      48.596814      3892.4284     -224.45453    
+      3100   11450.989     -1881213.8      566.89993      0             -59860.686      47.980761      3879.5609     -438.0216     
+      3200   10401.921     -1881238.4      514.96413      0             -59859.411      48.444267      3843.198       45.86947     
+      3300   10279.79      -1881431.6      508.91783      0             -59858.766      47.587565      3787.0756      508.96713    
+      3400   11622.378     -1881116.1      575.38485      0             -59856.506      47.826654      3803.8172      2486.2712    
+      3500   11073.877     -1881091.3      548.23041      0             -59857.043      48.8498        3817.704       1008.3993    
+      3600   10596.163     -1881337.3      524.58038      0             -59857.142      48.196062      3843.4707     -4155.6412    
+      3700   10940.101     -1881338.4      541.60759      0             -59857.672      48.412783      3865.0349      1870.7248    
+      3800   10871.097     -1881238        538.19142      0             -59856.739      48.293863      3871.0905     -3489.3155    
+      3900   10975.202     -1881276.8      543.34531      0             -59856.678      48.545816      3856.9162     -699.01904    
+      4000   12059.264     -1881182        597.01357      0             -59858.974      48.823651      3828.5565      1436.7727    
+      4100   11169.944     -1881181.4      552.98636      0             -59854.987      48.884353      3853.5398     -5455.5497    
+      4200   10819.854     -1881346.1      535.65458      0             -59856.739      48.132444      3876.9185     -2348.1637    
+      4300   11267.013     -1881281.7      557.79192      0             -59857.897      49.346213      3847.1813     -1900.1031    
+      4400   11121.075     -1881687.3      550.56703      0             -59857.946      47.697537      3840.4627     -33.948342    
+      4500   11383.488     -1881271.3      563.55821      0             -59855.465      48.076289      3853.8459      756.1755     
+      4600   10823.017     -1881444        535.81114      0             -59861.931      48.498114      3864.8276     -4423.6355    
+      4700   11512.681     -1880890.2      569.9541       0             -59856.176      48.520173      3836.5005     -4043.945     
+      4800   11234.711     -1881232.5      556.19274      0             -59861.2        48.870554      3826.9875      992.71563    
+      4900   11082.366     -1881431.2      548.65064      0             -59860.688      47.234442      3850.5356     -4483.1289    
+      5000   11181.96      -1881441.7      553.58122      0             -59857.697      48.50919       3830.7503      475.23562    
+      5100   12060.137     -1881190        597.05682      0             -59861.559      48.172143      3796.8134      1261.9207    
+      5200   12372.521     -1880817.7      612.52191      0             -59860.503      48.386853      3830.4417      1774.587     
+      5300   11239.289     -1881006.2      556.41939      0             -59859.371      48.782912      3816.923       1907.4905    
+      5400   11054.218     -1881250.7      547.25716      0             -59858.701      48.082181      3852.1513     -3371.3887    
+      5500   10434.331     -1881347.9      516.56862      0             -59855.555      47.783439      3836.1371     -395.05594    
+      5600   11814.032     -1881295.3      584.87295      0             -59853.856      47.608471      3862.928       3758.9423    
+      5700   11390.726     -1881465.5      563.91652      0             -59860.043      46.941078      3925.5489      4604.6046    
+      5800   11191.026     -1881230.4      554.03003      0             -59851.192      48.095733      3923.3222     -2705.8522    
+      5900   11262.87      -1881057.3      557.5868       0             -59856.84       48.891775      3932.8462     -3107.7964    
+      6000   10953.714     -1881298.1      542.28152      0             -59858.186      47.661488      3906.7606     -1063.4263    
+      6100   11109.173     -1881123.5      549.97779      0             -59855.22       48.781019      3887.2564     -2261.557     
+      6200   10651.776     -1881354.3      527.33358      0             -59856.278      48.38408       3865.3353      891.79882    
+      6300   11644.524     -1881401.1      576.4812       0             -59856.962      48.2414        3854.1025     -5068.8879    
+      6400   11381.822     -1881380.6      563.47572      0             -59860.791      48.22963       3840.6305      3670.6318    
+      6500   11371.878     -1881486.9      562.98344      0             -59862.796      47.385187      3812.5405      3239.2816    
+      6600   11396.469     -1881068.8      564.20084      0             -59857.258      48.092504      3826.8536     -3783.164     
+      6700   11537.076     -1881208.2      571.1618       0             -59859.795      47.772361      3846.1328     -3832.9635    
+      6800   11236.871     -1881250.2      556.29966      0             -59852.032      48.629662      3826.0209      5225.927     
+      6900   11670.746     -1881154.8      577.77939      0             -59857.802      48.416974      3845.6279      2449.9847    
+      7000   10707.619     -1881137.2      530.09821      0             -59858.045      49.754428      3821.7518     -533.46792    
+      7100   11378.116     -1881322.1      563.29227      0             -59857.518      48.93282       3800.4078     -2653.4009    
+      7200   10504.391     -1881448.4      520.03708      0             -59854.883      48.644057      3800.8379      4423.3881    
+      7300   11314.027     -1881145.4      560.1194       0             -59852.602      47.907361      3773.6278     -3939.9915    
+      7400   11505.588     -1881136.5      569.60294      0             -59854.609      49.072031      3725.2268      4285.5851    
+      7500   10717.507     -1881265.5      530.58771      0             -59861.014      47.6615        3732.7641     -727.86136    
+      7600   10407.133     -1881218.7      515.22216      0             -59857.348      49.612538      3694.1168      1532.8151    
+      7700   10959.483     -1881259        542.56714      0             -59859.254      48.314212      3666.2406      164.25853    
+      7800   11492.058     -1881170.4      568.93315      0             -59859.063      48.270173      3668.4631     -2991.8226    
+      7900   10349.836     -1881064.1      512.38558      0             -59861.643      48.430307      3707.9388      44.143264    
+      8000   10072.091     -1881081.5      498.63536      0             -59859.642      47.735776      3712.5838     -4230.4367    
+      8100   10953.764     -1880732.9      542.284        0             -59857.042      48.360622      3692.45        2486.5039    
+      8200   10691.182     -1881324.7      529.28445      0             -59853.55       47.954229      3612.0972     -2108.0774    
+      8300   12122.442     -1881134.2      600.1413       0             -59854.59       48.182867      3608.0645     -2800.0699    
+      8400   10906.326     -1880964.8      539.93551      0             -59858.582      48.128074      3604.1827     -2162.5883    
+      8500   10604.599     -1881282.4      524.99801      0             -59854.082      47.481248      3596.6788     -3364.171     
+      8600   10972.89      -1881097.8      543.23087      0             -59854.385      49.468776      3609.2498      3214.861     
+      8700   11596.383     -1881273.3      574.09789      0             -59857.403      47.692389      3586.7991      1908.8911    
+      8800   11556.599     -1881301        572.12833      0             -59857.605      48.246754      3590.8364      4983.9467    
+      8900   10713.842     -1881234.2      530.40627      0             -59856.953      47.712268      3614.4444     -2215.1822    
+      9000   11523.715     -1881190.5      570.50034      0             -59856.213      47.24146       3634.8213     -3553.9967    
+      9100   10917.953     -1881233        540.51113      0             -59857.755      48.072199      3636.8165     -536.20343    
+      9200   11792.171     -1880876.3      583.79072      0             -59854.039      48.405312      3606.8959      1326.1723    
+      9300   11367.231     -1881306.4      562.75338      0             -59851.225      47.995541      3622.6636     -4409.4164    
+      9400   12267.95      -1880886.4      607.34492      0             -59860.078      49.739591      3656.9304     -4246.014     
+      9500   11432.181     -1880945.8      565.9688       0             -59855.779      47.746244      3665.9436     -5920.6458    
+      9600   11875.32      -1881161.6      587.90712      0             -59855.349      48.116258      3668.6609     -295.95401    
+      9700   11047.324     -1881471.7      546.91587      0             -59853.87       48.322954      3664.3377     -2261.0627    
+      9800   11826.222     -1881035.4      585.47646      0             -59860.501      47.080728      3647.9009     -2881.2727    
+      9900   10868.038     -1881120.3      538.04002      0             -59862.022      48.069482      3596.1821      785.45375    
+     10000   11515.939     -1881056.9      570.11537      0             -59855.799      49.436121      3574.7289      2835.4091    
+     10100   11072.693     -1881262.6      548.17179      0             -59858.626      48.986452      3575.1988      2161.2812    
+     10200   10487.963     -1881119.6      519.22375      0             -59856.49       47.98902       3591.8727     -2754.1412    
+     10300   11718.458     -1880880        580.14142      0             -59858.18       48.55576       3596.8712      2698.7082    
+     10400   11375.937     -1881340.5      563.18437      0             -59857.898      48.266251      3613.7887     -610.32347    
+     10500   11011.579     -1881129.8      545.14624      0             -59854.299      48.993883      3628.1337     -1753.708     
+     10600   9743.1774     -1881429.8      482.35193      0             -59862.03       47.979044      3580.2714     -1587.3763    
+     10700   11572.054     -1880922.5      572.89346      0             -59856.883      48.37723       3526.6038      556.99051    
+     10800   11074.682     -1880970.7      548.27023      0             -59858.89       48.05053       3486.9334      3398.6725    
+     10900   11871.248     -1881411.7      587.70555      0             -59855.762      47.789871      3513.4052      3426.6876    
+     11000   11975.639     -1881322.5      592.87359      0             -59854.914      48.819154      3557.0848      6365.1267    
+     11100   11466.534     -1881419.5      567.66951      0             -59862.587      48.193492      3585.3479     -1195.1567    
+     11200   10825.613     -1881268.5      535.93968      0             -59857.518      48.532332      3598.9043     -70.423603    
+     11300   11129.11      -1881769.1      550.96481      0             -59856.865      48.380723      3603.7673      1610.0129    
+     11400   10917.302     -1881344.1      540.47891      0             -59859.337      46.908267      3552.9209      837.08675    
+     11500   10308.422     -1881652.9      510.33527      0             -59857.582      48.501929      3511.8923     -148.35631    
+     11600   10448.945     -1881264.9      517.2921       0             -59859.317      48.219479      3464.908       4278.6321    
+     11700   11882.053     -1881640.1      588.24048      0             -59860.819      48.054471      3474.8536      5880.4186    
+     11800   11812.106     -1881366        584.77762      0             -59858.315      47.567856      3484.4994      1275.6446    
+     11900   11158.326     -1881501.8      552.41115      0             -59857.632      48.623801      3524.7685      1257.213     
+     12000   11433.404     -1881256.1      566.02935      0             -59860.636      48.697444      3565.8215      435.34468    
+     12100   11597.972     -1881409.1      574.17658      0             -59861.435      48.944029      3590.747       4343.38      
+     12200   10856.025     -1881002.4      537.44528      0             -59862.474      47.997657      3599.7211     -1147.065     
+     12300   12127.246     -1881148.3      600.37914      0             -59859.068      47.906264      3626.4156      1276.8642    
+     12400   11351.662     -1881362.2      561.9826       0             -59856.586      48.143058      3637.7566     -2054.3867    
+     12500   11190.047     -1881347.9      553.98156      0             -59860.61       47.917782      3639.6417     -413.54152    
+     12600   11266.76      -1881177.8      557.77936      0             -59860.769      48.520138      3651.1106      6815.0458    
+     12700   11316.434     -1881332.6      560.23855      0             -59859.776      49.438205      3652.3019     -1280.6641    
+     12800   11659.471     -1880995.8      577.22116      0             -59859.036      48.547958      3611.6447     -2323.0608    
+     12900   11755.89      -1881383.8      581.99457      0             -59858.94       48.343108      3581.4943      2358.5768    
+     13000   10426.829     -1881458.4      516.1972       0             -59859.464      48.353473      3582.8533      3200.4994    
+     13100   11412.6       -1881030.6      564.99942      0             -59861.029      48.42876       3596.2435     -1483.0432    
+     13200   11202.523     -1881302.2      554.59922      0             -59860.293      48.476729      3590.8814     -2535.0606    
+     13300   10576.455     -1881433.4      523.60469      0             -59859.789      48.263526      3598.0925      1344.7529    
+     13400   10845.433     -1881536        536.92089      0             -59860.654      48.27013       3594.4081     -2944.4309    
+     13500   11289.976     -1881287.2      558.92871      0             -59857.531      49.398845      3588.2553     -2974.089     
+     13600   11480.88      -1881406.4      568.37972      0             -59856.717      48.250512      3576.5409     -1254.0393    
+     13700   11698.734     -1880946        579.16497      0             -59857.651      49.150142      3576.9797     -2607.6659    
+     13800   10297.325     -1881607.6      509.78592      0             -59856.495      49.379711      3585.66       -732.61811    
+     13900   10910.105     -1881514.6      540.12258      0             -59856.229      48.879348      3567.1915      774.623      
+     14000   11716.685     -1881019.5      580.05367      0             -59863.733      48.093782      3573.4616      2274.7367    
+     14100   10775.593     -1881257.3      533.46335      0             -59857.027      48.099838      3571.9482     -2889.4095    
+     14200   10565.525     -1881028.9      523.06358      0             -59857.364      49.190311      3576.3534      3604.0457    
+     14300   11363.492     -1881296.8      562.56826      0             -59860.672      49.8872        3553.3407     -19.188426    
+     14400   11706.152     -1881034        579.5322       0             -59856.775      48.226549      3541.3392      2677.3451    
+     14500   11053.362     -1881500.5      547.21478      0             -59859.749      48.748817      3567.959      -1054.4459    
+     14600   12095.05      -1881256.9      598.78524      0             -59859.526      48.104166      3561.6427      176.25304    
+     14700   11139.363     -1880971.3      551.4724       0             -59862.03       47.825439      3545.0895      973.95877    
+     14800   10834.962     -1881248.3      536.40251      0             -59855.247      48.578164      3522.1824      8192.5935    
+     14900   10847.869     -1881319.5      537.04148      0             -59860.566      48.619678      3564.614       4167.7937    
+     15000   11498.12      -1881405.3      569.23325      0             -59860.217      47.381052      3608.6473     -591.08845    
+     15100   10494.486     -1881140.9      519.54669      0             -59855.655      49.056344      3611.173      -109.40536    
+     15200   11299.855     -1881357.9      559.4178       0             -59855.597      49.192315      3622.078       1740.419     
+     15300   10563.338     -1881675.2      522.95532      0             -59861.832      47.713672      3596.4626      2965.9535    
+     15400   11453.379     -1881310.1      567.01826      0             -59862.843      48.283044      3550.6041      7994.4817    
+     15500   11568.595     -1881352.4      572.72223      0             -59857.015      48.357359      3558.3356      1030.9107    
+     15600   11344.458     -1881390.9      561.62597      0             -59857.911      47.978117      3558.9826      6067.5185    
+     15700   11576.935     -1881098.1      573.13508      0             -59853.832      48.769973      3520.8524      3409.3842    
+     15800   10953.091     -1881115.7      542.25068      0             -59855.236      48.557704      3505.5851      6435.8706    
+     15900   10751.288     -1881163.1      532.2601       0             -59860.015      47.318639      3515.5737     -1361.554     
+     16000   10936.458     -1881721.9      541.42722      0             -59856.882      47.537918      3512.2704     -1496.1174    
+     16100   11220.594     -1881120        555.49387      0             -59862.235      48.047763      3483.7908      1282.3785    
+     16200   10789.145     -1881483.1      534.13429      0             -59850.072      48.551397      3477.8328      7038.7821    
+     16300   11830.508     -1881322        585.68867      0             -59860.709      46.992792      3490.2796      2917.2714    
+     16400   11147.601     -1881158.5      551.88024      0             -59858.093      48.197124      3520.6684      2251.3501    
+     16500   10849.849     -1881309.3      537.13951      0             -59857.198      48.808985      3515.3034      4674.3628    
+     16600   12124.532     -1881235.2      600.24479      0             -59855.977      48.324148      3560.1345     -658.3858     
+     16700   11499.638     -1881367.6      569.3084       0             -59862.238      48.983465      3573.8853      3189.4596    
+     16800   10888.092     -1881060.3      539.03281      0             -59856.774      48.386579      3605.0465      2783.4607    
+     16900   11425.831     -1881489.4      565.65446      0             -59861.156      48.048912      3591.4569     -410.65048    
+     17000   10698.336     -1881119.3      529.63861      0             -59856.982      48.915926      3593.1494     -1034.4994    
+     17100   10046.17      -1881224.2      497.35209      0             -59855.534      47.374769      3578.189       144.85384    
+     17200   11478.008     -1881556.2      568.23758      0             -59856.227      48.088979      3616.2388      2799.969     
+     17300   10835.098     -1881028        536.40927      0             -59853.533      50.035472      3671.9767      2038.313     
+     17400   11380.484     -1881272.8      563.40946      0             -59857.552      49.232641      3698.2883      3837.6668    
+     17500   11456.83      -1881490.5      567.18913      0             -59856.231      48.425064      3684.7665     -2359.2925    
+     17600   11124.308     -1881147.9      550.72708      0             -59859.682      47.483181      3689.191       1734.44      
+     17700   10698.841     -1881067.8      529.66361      0             -59859.87       48.537215      3679.884      -2419.2858    
+     17800   10804.431     -1881500.5      534.89101      0             -59855.426      49.427394      3633.3594      3602.3653    
+     17900   10547.264     -1881183.3      522.15956      0             -59861.632      47.21443       3640.0592      1169.6901    
+     18000   11005.39      -1881427.6      544.83981      0             -59859.395      48.488765      3698.2298     -2250.3712    
+     18100   11336.942     -1881047.1      561.25384      0             -59858.203      47.715561      3713.0066      1295.5582    
+     18200   12102.573     -1881169.2      599.15766      0             -59861.259      48.515514      3756.0832     -3839.3446    
+     18300   11201.512     -1881324.2      554.54919      0             -59856.807      48.38806       3780.802      -1129.161     
+     18400   11016.733     -1881495.2      545.40137      0             -59852.572      47.110123      3811.0866     -1153.1176    
+     18500   11650.193     -1881060.2      576.76186      0             -59860.268      48.594661      3812.0632     -7391.6514    
+     18600   11957.839     -1881314        591.9924       0             -59855.864      48.448329      3769.7936     -2187.71      
+     18700   11440.279     -1881419.6      566.36971      0             -59859.163      48.289077      3702.9758      2344.8005    
+     18800   11995.726     -1881151.5      593.86806      0             -59858.489      48.77612       3642.017       3166.1311    
+     18900   11311.531     -1881291.3      559.99582      0             -59859.458      47.495717      3647.8149      2969.7283    
+     19000   10967.112     -1881085.2      542.94482      0             -59861.076      49.007583      3677.7325      4587.5323    
+     19100   10824.982     -1880931.6      535.90845      0             -59861.153      48.309173      3672.9559     -594.93598    
+     19200   11019.252     -1881427.3      545.5261       0             -59855.674      48.723763      3681.0766      490.35116    
+     19300   11376.329     -1881271.7      563.20377      0             -59855.892      48.296062      3712.4064      2134.494     
+     19400   10990.273     -1881347.8      544.09143      0             -59859.658      48.188439      3729.3397     -775.73181    
+     19500   10667.95      -1881208.6      528.13431      0             -59857.379      48.644157      3730.1437      2281.0618    
+     19600   11529.987     -1881138.5      570.81085      0             -59854.584      49.138647      3719.7734     -3715.8386    
+     19700   11193.868     -1880807.3      554.17075      0             -59856.636      48.522119      3709.1323     -490.63094    
+     19800   11277.984     -1881081.9      558.33506      0             -59860.802      48.566341      3696.3279     -759.24688    
+     19900   11247.133     -1881264.3      556.80773      0             -59852.263      48.383115      3670.8637     -4953.8182    
+     20000   10958.817     -1881033.5      542.53417      0             -59854.152      48.976276      3623.0827      699.87486    
+Loop time of 3884.25 on 1 procs for 20000 steps with 512 atoms
+
+Performance: 0.222 ns/day, 107.896 hours/ns, 5.149 timesteps/s, 2.636 katom-step/s
+99.5% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 390.04     | 390.04     | 390.04     |   0.0 | 10.04
+Bond    | 0.025363   | 0.025363   | 0.025363   |   0.0 |  0.00
+Kspace  | 1569.1     | 1569.1     | 1569.1     |   0.0 | 40.40
+Neigh   | 16.947     | 16.947     | 16.947     |   0.0 |  0.44
+Comm    | 0.70609    | 0.70609    | 0.70609    |   0.0 |  0.02
+Output  | 7.1486     | 7.1486     | 7.1486     |   0.0 |  0.18
+Modify  | 1900.1     | 1900.1     | 1900.1     |   0.0 | 48.92
+Other   |            | 0.1861     |            |       |  0.00
+
+Nlocal:            512 ave         512 max         512 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           3786 ave        3786 max        3786 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:       135458 ave      135458 max      135458 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 135458
+Ave neighs/atom = 264.56641
+Ave special neighs/atom = 0.5
+Neighbor list builds = 2000
+Dangerous builds not checked
+
+write_data      final_data/final_${ibead}.lmp nocoeff
+write_data      final_data/final_01.lmp nocoeff
+System init for write_data ...
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.35514524
+  estimated relative force accuracy = 0.024663472
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+write_restart   final_restart/restart_${ibead}.lmp
+write_restart   final_restart/restart_01.lmp
+System init for write_restart ...
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb
+  G vector (1/distance) = 0.4
+  grid = 64 64 64
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.35514524
+  estimated relative force accuracy = 0.024663472
+  using double precision FFTW3
+  3d grid and FFT values/proc = 456533 262144
+WARNING: Interaction between types 1 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 2 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+WARNING: Interaction between types 3 and 3 is set with deepmd, but will be ignored.
+ Deepmd model has only 2 types, it only computes the mulitbody interaction of types: 1-2. (/global/homes/k/kehanc/Software/DeePMD/deepmd-kit/source/lmp/pair_base.cpp:446)
+Generated 0 of 3 mixed pair_coeff terms from geometric mixing rule
+Initializing PI Langevin equation thermostat...
+  Bead ID    |    omega    |    tau    |    c1    |    c2
+      0     0.00000000e+00 5.00000000e-02 9.95012479e-01 9.97505201e-02
+      1     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+      2     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      3     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      4     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      5     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      6     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      7     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      8     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      9     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      10     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      11     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      12     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      13     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      14     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      15     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      16     2.93261912e+03 1.70496058e-04 2.30775579e-01 9.73007005e-01
+      17     2.91849776e+03 1.71321016e-04 2.32410778e-01 9.72617721e-01
+      18     2.87626966e+03 1.73836273e-04 2.37370081e-01 9.71419294e-01
+      19     2.80634152e+03 1.78167909e-04 2.45816302e-01 9.69316432e-01
+      20     2.70938678e+03 1.84543604e-04 2.58026396e-01 9.66137868e-01
+      21     2.58633916e+03 1.93323446e-04 2.74399671e-01 9.61615734e-01
+      22     2.43838368e+03 2.05053866e-04 2.95468856e-01 9.55352372e-01
+      23     2.26694523e+03 2.20561129e-04 3.21913431e-01 9.46769108e-01
+      24     2.07367487e+03 2.41117838e-04 3.54574276e-01 9.35027851e-01
+      25     1.86043387e+03 2.68754513e-04 3.94468126e-01 9.18909624e-01
+      26     1.62927589e+03 3.06884797e-04 4.42799617e-01 8.96620599e-01
+      27     1.38242708e+03 3.61682729e-04 5.00967755e-01 8.65465949e-01
+      28     1.12226475e+03 4.45527671e-04 5.70562607e-01 8.21254109e-01
+      29     8.51294394e+02 5.87340881e-04 6.53346804e-01 7.57058752e-01
+      30     5.72125608e+02 8.73933963e-04 7.51215435e-01 6.60057096e-01
+      31     2.87446940e+02 1.73945146e-03 8.66127225e-01 4.99823599e-01
+  PILE_L thermostat successfully initialized!
+
+WARNING: Neighbor exclusions used with KSpace solver may give inconsistent Coulombic energies (src/neighbor.cpp:659)
+Total wall time: 1:04:48
