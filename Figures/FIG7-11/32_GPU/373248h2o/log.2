@@ -1,0 +1,177 @@
+LAMMPS (2 Aug 2023)
+Processor partition = 2
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (src/comm.cpp:98)
+  using 1 OpenMP thread(s) per MPI task
+Loaded 1 plugins from /opt/deepmd-kit/lib/deepmd_lmp
+clear
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (src/comm.cpp:98)
+  using 1 OpenMP thread(s) per MPI task
+Loaded 1 plugins from /opt/deepmd-kit/lib/deepmd_lmp
+# --------------------- VARIABLES-------------------------
+variable        ibead           uloop 99 pad
+variable        NSTEPS          equal 1000
+variable        THERMO_FREQ     equal 1
+#variable        DUMP_FREQ       equal 4000
+#variable        NREPEAT         equal ${NSTEPS}/${DUMP_FREQ}
+variable        TEMP            equal 300.000000
+variable        TAU_T           equal 1.000000
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+# --------------------- ATOM DEFINITION ------------------
+read_data       /pscratch/sd/y/yifanl/Work/h2o/pimd/initial_config/conf01
+Reading data file ...
+  orthogonal box = (0 0 0) to (24.76926 24.76926 24.76926)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1536 atoms
+  read_data CPU = 0.005 seconds
+mass            1 16.000000
+mass            2 1.000000
+replicate       9 9 9
+Replication is creating a 9x9x9 = 729 times larger system...
+  orthogonal box = (0 0 0) to (222.92334 222.92334 222.92334)
+  1 by 1 by 1 MPI processor grid
+  1119744 atoms
+  replicate CPU = 0.061 seconds
+# --------------------- FORCE FIELDS ---------------------
+pair_style      deepmd /pscratch/sd/y/yifanl/Work/h2o/pimd/benchmark/graph.pb
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /opt/deepmd-kit
+  source:             
+  source branch:      HEAD
+  source commit:      5ec5eae
+  source commit at:   2024-02-04 18:53:26 -0500
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /opt/deepmd-kit/lib/python3.11/site-packages/tensorflow/include;/opt/deepmd-kit/include
+  build with tf lib:  /opt/deepmd-kit/lib/python3.11/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /opt/deepmd-kitpair_coeff * *
+# --------------------- MD SETTINGS ----------------------
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+timestep        0.000500
+thermo          ${THERMO_FREQ}
+thermo          1
+thermo_style    custom step pe
+#dump            1 all custom ${DUMP_FREQ} ${ibead}.xyz id type x y z
+#dump_modify     1 sort id
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp ${TEMP} thermostat PILE_L 1234 tau ${TAU_T}
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp 300 thermostat PILE_L 1234 tau ${TAU_T}
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp 300 thermostat PILE_L 1234 tau 1
+# --------------------- RUN ------------------------------
+run             ${NSTEPS}
+run             1000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- USER-DEEPMD package:
+
+@article{Wang_ComputPhysCommun_2018_v228_p178,
+  author = {Wang, Han and Zhang, Linfeng and Han, Jiequn and E, Weinan},
+  doi = {10.1016/j.cpc.2018.03.016},
+  url = {https://doi.org/10.1016/j.cpc.2018.03.016},
+  year = 2018,
+  month = {jul},
+  publisher = {Elsevier {BV}},
+  volume = 228,
+  journal = {Comput. Phys. Commun.},
+  title = {{DeePMD-kit: A deep learning package for many-body potential energy representation and molecular dynamics}},
+  pages = {178--184}
+}
+@misc{Zeng_JChemPhys_2023_v159_p054801,
+  title  = {{DeePMD-kit v2: A software package for deep potential models}},
+  author =   {Jinzhe Zeng and Duo Zhang and Denghui Lu and Pinghui Mo and Zeyu Li
+         and Yixiao Chen and Mari{\'a}n Rynik and Li'ang Huang and Ziyao Li and 
+         Shaochen Shi and Yingze Wang and Haotian Ye and Ping Tuo and Jiabin
+         Yang and Ye Ding and Yifan Li and Davide Tisi and Qiyu Zeng and Han 
+         Bao and Yu Xia and Jiameng Huang and Koki Muraoka and Yibo Wang and 
+         Junhan Chang and Fengbo Yuan and Sigbj{\o}rn L{\o}land Bore and Chun
+         Cai and Yinnian Lin and Bo Wang and Jiayan Xu and Jia-Xin Zhu and 
+         Chenxing Luo and Yuzhi Zhang and Rhys E A Goodall and Wenshuo Liang
+         and Anurag Kumar Singh and Sikai Yao and Jingchao Zhang and Renata
+         Wentzcovitch and Jiequn Han and Jie Liu and Weile Jia and Darrin M
+         York and Weinan E and Roberto Car and Linfeng Zhang and Han Wang},
+  journal =  {J. Chem. Phys.},
+  volume =   159,
+  issue =    5,  
+  year =    2023,
+  pages  =   054801,
+  doi =      {10.1063/5.0155600},
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+
+Initializing PI Langevin equation thermostat...
+Bead ID    |    omega    |    tau    |    c1    |    c2
+    0     0.00000000e+00 1.00000000e+00 9.99750031e-01 2.23578850e-02
+    1     2.46383091e+02 2.02936004e-03 8.84094302e-01 4.67308533e-01
+    2     4.90393378e+02 1.01958962e-03 7.82550604e-01 6.22586984e-01
+    3     7.29680909e+02 6.85231028e-04 6.94307415e-01 7.19678548e-01
+    4     9.61941214e+02 5.19782282e-04 6.18183088e-01 7.86034141e-01
+    5     1.18493750e+03 4.21963184e-04 5.52960477e-01 8.33207484e-01
+    6     1.39652219e+03 3.58032263e-04 4.97449570e-01 8.67492896e-01
+    7     1.59465761e+03 3.13546932e-04 4.50530815e-01 8.92760878e-01
+    8     1.77743560e+03 2.81304144e-04 4.11182633e-01 9.11552984e-01
+    9     1.94309592e+03 2.57321317e-04 3.78496688e-01 9.25602646e-01
+    10     2.09004316e+03 2.39229510e-04 3.51684231e-01 9.36118690e-01
+    11     2.21686214e+03 2.25544021e-04 3.30076422e-01 9.43954213e-01
+    12     2.32233153e+03 2.15300871e-04 3.13120943e-01 9.49713259e-01
+    13     2.40543559e+03 2.07862560e-04 3.00376739e-01 9.53820641e-01
+    14     2.46537400e+03 2.02808986e-04 2.91508242e-01 9.56568317e-01
+    15     2.50156951e+03 1.99874518e-04 2.86280050e-01 9.58145987e-01
+    16     2.51367353e+03 1.98912068e-04 2.84552711e-01 9.58660396e-01
+    17     2.50156951e+03 1.99874518e-04 2.86280050e-01 9.58145987e-01
+    18     2.46537400e+03 2.02808986e-04 2.91508242e-01 9.56568317e-01
+    19     2.40543559e+03 2.07862560e-04 3.00376739e-01 9.53820641e-01
+    20     2.32233153e+03 2.15300871e-04 3.13120943e-01 9.49713259e-01
+    21     2.21686214e+03 2.25544021e-04 3.30076422e-01 9.43954213e-01
+    22     2.09004316e+03 2.39229510e-04 3.51684231e-01 9.36118690e-01
+    23     1.94309592e+03 2.57321317e-04 3.78496688e-01 9.25602646e-01
+    24     1.77743560e+03 2.81304144e-04 4.11182633e-01 9.11552984e-01
+    25     1.59465761e+03 3.13546932e-04 4.50530815e-01 8.92760878e-01
+    26     1.39652219e+03 3.58032263e-04 4.97449570e-01 8.67492896e-01
+    27     1.18493750e+03 4.21963184e-04 5.52960477e-01 8.33207484e-01
+    28     9.61941214e+02 5.19782282e-04 6.18183088e-01 7.86034141e-01
+    29     7.29680909e+02 6.85231028e-04 6.94307415e-01 7.19678548e-01
+    30     4.90393378e+02 1.01958962e-03 7.82550604e-01 6.22586984e-01
+    31     2.46383091e+02 2.02936004e-03 8.84094302e-01 4.67308533e-01
+PILE_L thermostat successfully initialized!
+
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8
+  ghost atom cutoff = 8
+  binsize = 4, bins = 56 56 56
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair deepmd, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+ERROR on proc 0: DeePMD-kit C API Error: DeePMD-kit Error: TensorFlow Error: RESOURCE_EXHAUSTED: 2 root error(s) found.
+  (0) RESOURCE_EXHAUSTED: OOM when allocating tensor with shape[2293235712] and type uint64 on /job:localhost/replica:0/task:0/device:GPU:2 by allocator GPU_2_bfc
+	 [[{{node ProdEnvMatA}}]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
+
+	 [[o_energy/_35]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
+
+  (1) RESOURCE_EXHAUSTED: OOM when allocating tensor with shape[2293235712] and type uint64 on /job:localhost/replica:0/task:0/device:GPU:2 by allocator GPU_2_bfc
+	 [[{{node ProdEnvMatA}}]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
+
+0 successful operations.
+0 derived errors ignored. (/home/conda/feedstock_root/build_artifacts/deepmd-kit_1707091488019/work/source/lmp/pair_deepmd.cpp:573)
+Last command: run             ${NSTEPS}
