@@ -13,7 +13,7 @@ boundary        p p p
 atom_style      atomic
 atom_modify     map yes
 # --------------------- ATOM DEFINITION ------------------
-read_data       /pscratch/sd/y/yifanl/Work/h2o/pimd/initial_config/conf01
+read_data       conf01
 mass            1 16.000000
 mass            2 1.000000
 replicate       6 6 6
