@@ -1,0 +1,12 @@
+{
+  "verbose": false,
+  "use_unix": true,
+  "port": 12010,
+  "host": "014",
+  "graph_file": "../../graph.pb",
+  "coord_file": "init4.xyz",
+  "atom_type": {
+    "O": 0,
+    "H": 1
+  }
+}
