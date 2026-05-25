@@ -1,0 +1,296 @@
+LAMMPS (10 Dec 2025 - Development - patch_24Dec2020-21955-gcf116c2130-modified)
+Processor partition = 11
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread.
+  using 1 OpenMP thread(s) per MPI task
+Loaded 1 plugins from /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/deepmd_lmp
+Loaded 1 plugins from /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/deepmd_lmp
+clear
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread.
+  using 1 OpenMP thread(s) per MPI task
+Restoring plugin: deepmd pair style v3.1.1-24-gc346332d by Han Wang
+Restoring plugin: deepspin pair style v3.1.1-24-gc346332d by Duo Zhang
+Restoring plugin: compute deeptensor/atom v3.1.1-24-gc346332d by Han Wang
+Restoring plugin: fix dplr v3.1.1-24-gc346332d by Han Wang
+Restoring plugin: kspace pppm/dplr v3.1.1-24-gc346332d by Han Wang
+Loaded 1 plugins from /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/deepmd_lmp
+Loaded 1 plugins from /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/deepmd_lmp
+# --------------------- VARIABLES-------------------------
+variable        ibead           uloop 99 pad
+variable        NSTEPS          equal 100
+variable        THERMO_FREQ     equal 1
+#variable        DUMP_FREQ       equal 4000
+#variable        NREPEAT         equal ${NSTEPS}/${DUMP_FREQ}
+variable        TEMP            equal 300.000000
+variable        TAU_T           equal 1.000000
+# ---------------------- INITIALIZAITION ------------------
+units           metal
+boundary        p p p
+atom_style      atomic
+atom_modify     map yes
+# --------------------- ATOM DEFINITION ------------------
+read_data       /pscratch/sd/y/yifanl/Work/h2o/pimd/initial_config/conf01
+Reading data file ...
+  orthogonal box = (0 0 0) to (24.76926 24.76926 24.76926)
+  1 by 2 by 2 MPI processor grid
+  reading atoms ...
+  1536 atoms
+  read_data CPU = 0.013 seconds
+mass            1 16.000000
+mass            2 1.000000
+replicate       14 14 7
+Replication is creating a 14x14x7 = 1372 times larger system...
+  orthogonal box = (0 0 0) to (346.76964 346.76964 173.38482)
+  2 by 2 by 1 MPI processor grid
+  2107392 atoms
+  replicate CPU = 0.093 seconds
+# --------------------- FORCE FIELDS ---------------------
+pair_style      deepmd /pscratch/sd/y/yifanl/Work/h2o/pimd/benchmark/graph.pb
+Summary of lammps deepmd module ...
+  >>> Info of deepmd-kit:
+  installed to:       /global/homes/y/yifanl/.conda/envs/dp-pimd-devel
+  source:             v3.1.1-24-gc346332d
+  source branch:      devel
+  source commit:      c346332d
+  source commit at:   2025-11-14 11:37:53 +0000
+  support model ver.: 1.1 
+  build variant:      cuda
+  build with tf inc:  /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/python3.12/site-packages/tensorflow/include;/global/homes/y/yifanl/.conda/envs/dp-pimd-devel/include
+  build with tf lib:  /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/python3.12/site-packages/tensorflow/libtensorflow_cc.so.2
+  set tf intra_op_parallelism_threads: 0
+  set tf inter_op_parallelism_threads: 0
+  >>> Info of lammps module:
+  use deepmd-kit at:  /global/homes/y/yifanl/.conda/envs/dp-pimd-devel
+  source:             v3.1.1-24-gc346332d
+  source branch:      devel
+  source commit:      c346332d
+  source commit at:   2025-11-14 11:37:53 +0000
+  build with inc:     
+  build with lib:     /global/homes/y/yifanl/.conda/envs/dp-pimd-devel/lib/python3.12/site-packages/tensorflow
+pair_coeff * *
+# --------------------- MD SETTINGS ----------------------
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+timestep        0.000500
+thermo          ${THERMO_FREQ}
+thermo          1
+thermo_style    custom step pe
+#dump            1 all custom ${DUMP_FREQ} ${ibead}.xyz id type x y z
+#dump_modify     1 sort id
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp ${TEMP} thermostat PILE_L 1234 tau ${TAU_T}
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp 300 thermostat PILE_L 1234 tau ${TAU_T}
+fix 1 all pimd/langevin ensemble nvt integrator obabo temp 300 thermostat PILE_L 1234 tau 1
+# --------------------- RUN ------------------------------
+run             ${NSTEPS}
+run             100
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- USER-DEEPMD package:
+
+@article{Wang_ComputPhysCommun_2018_v228_p178,
+  author = {Wang, Han and Zhang, Linfeng and Han, Jiequn and E, Weinan},
+  doi = {10.1016/j.cpc.2018.03.016},
+  url = {https://doi.org/10.1016/j.cpc.2018.03.016},
+  year = 2018,
+  month = {jul},
+  publisher = {Elsevier {BV}},
+  volume = 228,
+  journal = {Comput. Phys. Commun.},
+  title = {{DeePMD-kit: A deep learning package for many-body potential energy representation and molecular dynamics}},
+  pages = {178--184}
+}
+@article{Zeng_JChemPhys_2023_v159_p054801,
+  title  = {{DeePMD-kit v2: A software package for deep potential models}},
+  author =   {Jinzhe Zeng and Duo Zhang and Denghui Lu and Pinghui Mo and Zeyu Li
+         and Yixiao Chen and Mari{\'a}n Rynik and Li'ang Huang and Ziyao Li and 
+         Shaochen Shi and Yingze Wang and Haotian Ye and Ping Tuo and Jiabin
+         Yang and Ye Ding and Yifan Li and Davide Tisi and Qiyu Zeng and Han 
+         Bao and Yu Xia and Jiameng Huang and Koki Muraoka and Yibo Wang and 
+         Junhan Chang and Fengbo Yuan and Sigbj{\o}rn L{\o}land Bore and Chun
+         Cai and Yinnian Lin and Bo Wang and Jiayan Xu and Jia-Xin Zhu and 
+         Chenxing Luo and Yuzhi Zhang and Rhys E A Goodall and Wenshuo Liang
+         and Anurag Kumar Singh and Sikai Yao and Jingchao Zhang and Renata
+         Wentzcovitch and Jiequn Han and Jie Liu and Weile Jia and Darrin M
+         York and Weinan E and Roberto Car and Linfeng Zhang and Han Wang},
+  journal =  {J. Chem. Phys.},
+  volume =   159,
+  issue =    5,  
+  year =    2023,
+  pages  =   054801,
+  doi =      {10.1063/5.0155600},
+}
+@Article{Zeng_JChemTheoryComput_2025_v21_p4375,
+  author =   {Jinzhe Zeng and Duo Zhang and Anyang Peng and Xiangyu Zhang and Sensen
+             He and Yan Wang and Xinzijian Liu and Hangrui Bi and Yifan Li and Chun
+             Cai and Chengqian Zhang and Yiming Du and Jia-Xin Zhu and Pinghui Mo
+             and Zhengtao Huang and Qiyu Zeng and Shaochen Shi and Xuejian Qin and
+             Zhaoxi Yu and Chenxing Luo and Ye Ding and Yun-Pei Liu and Ruosong Shi
+             and Zhenyu Wang and Sigbj{\o}rn L{\o}land Bore and Junhan Chang and
+             Zhe Deng and Zhaohan Ding and Siyuan Han and Wanrun Jiang and Guolin
+             Ke and Zhaoqing Liu and Denghui Lu and Koki Muraoka and Hananeh Oliaei
+             and Anurag Kumar Singh and Haohui Que and Weihong Xu and Zhangmancang
+             Xu and Yong-Bin Zhuang and Jiayu Dai and Timothy J. Giese and Weile
+             Jia and Ben Xu and Darrin M. York and Linfeng Zhang and Han Wang},
+    title =    {{DeePMD-kit v3: A Multiple-Backend Framework for Machine Learning
+             Potentials}},
+  journal =  {J. Chem. Theory Comput.},
+  year =     2025,
+  volume =   21,
+  number =   9,
+  pages =    {4375--4385},
+  doi =      {10.1021/acs.jctc.5c00340},
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8
+  ghost atom cutoff = 8
+  binsize = 4, bins = 87 87 44
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair deepmd, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 559.4 | 559.4 | 559.4 Mbytes
+   Step         PotEng    
+         0  -3.2830679e+08
+         1  -3.2826987e+08
+         2  -3.2824056e+08
+         3  -3.2821983e+08
+         4  -3.2820447e+08
+         5  -3.281921e+08 
+         6  -3.2818154e+08
+         7  -3.2817225e+08
+         8  -3.2816516e+08
+         9  -3.2816094e+08
+        10  -3.2815992e+08
+        11  -3.2816122e+08
+        12  -3.2816378e+08
+        13  -3.2816592e+08
+        14  -3.2816661e+08
+        15  -3.2816538e+08
+        16  -3.2816279e+08
+        17  -3.2815951e+08
+        18  -3.2815674e+08
+        19  -3.2815568e+08
+        20  -3.2815727e+08
+        21  -3.281614e+08 
+        22  -3.2816626e+08
+        23  -3.2817074e+08
+        24  -3.2817356e+08
+        25  -3.2817427e+08
+        26  -3.2817328e+08
+        27  -3.2817153e+08
+        28  -3.2816998e+08
+        29  -3.2816933e+08
+        30  -3.2816914e+08
+        31  -3.281696e+08 
+        32  -3.2816988e+08
+        33  -3.2816892e+08
+        34  -3.2816698e+08
+        35  -3.2816449e+08
+        36  -3.281617e+08 
+        37  -3.2815889e+08
+        38  -3.2815691e+08
+        39  -3.2815609e+08
+        40  -3.2815663e+08
+        41  -3.2815819e+08
+        42  -3.2815988e+08
+        43  -3.2816151e+08
+        44  -3.2816217e+08
+        45  -3.2816247e+08
+        46  -3.2816226e+08
+        47  -3.2816236e+08
+        48  -3.2816262e+08
+        49  -3.2816312e+08
+        50  -3.2816406e+08
+        51  -3.2816478e+08
+        52  -3.2816495e+08
+        53  -3.2816424e+08
+        54  -3.2816304e+08
+        55  -3.2816187e+08
+        56  -3.2816047e+08
+        57  -3.2815968e+08
+        58  -3.281593e+08 
+        59  -3.2815966e+08
+        60  -3.2816027e+08
+        61  -3.28161e+08  
+        62  -3.2816172e+08
+        63  -3.2816273e+08
+        64  -3.2816354e+08
+        65  -3.2816454e+08
+        66  -3.2816561e+08
+        67  -3.2816665e+08
+        68  -3.2816697e+08
+        69  -3.2816755e+08
+        70  -3.2816806e+08
+        71  -3.2816796e+08
+        72  -3.2816727e+08
+        73  -3.2816634e+08
+        74  -3.2816542e+08
+        75  -3.2816446e+08
+        76  -3.281634e+08 
+        77  -3.2816282e+08
+        78  -3.2816206e+08
+        79  -3.2816091e+08
+        80  -3.2816029e+08
+        81  -3.2816026e+08
+        82  -3.2816013e+08
+        83  -3.2816045e+08
+        84  -3.2816123e+08
+        85  -3.2816231e+08
+        86  -3.2816352e+08
+        87  -3.2816441e+08
+        88  -3.281651e+08 
+        89  -3.2816545e+08
+        90  -3.2816547e+08
+        91  -3.2816523e+08
+        92  -3.2816498e+08
+        93  -3.2816469e+08
+        94  -3.2816423e+08
+        95  -3.2816374e+08
+        96  -3.2816311e+08
+        97  -3.281621e+08 
+        98  -3.2816098e+08
+        99  -3.2816011e+08
+       100  -3.2815989e+08
+Loop time of 520.096 on 4 procs for 100 steps with 2107392 atoms
+
+Performance: 0.008 ns/day, 2889.424 hours/ns, 0.192 timesteps/s, 405.193 katom-step/s
+76.7% CPU use with 4 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 65.45      | 65.641     | 65.776     |   1.5 | 12.62
+Neigh   | 52.509     | 52.55      | 52.596     |   0.5 | 10.10
+Comm    | 1.2034     | 1.3068     | 1.429      |   7.4 |  0.25
+Output  | 0.0032188  | 0.0044063  | 0.0063926  |   1.9 |  0.00
+Modify  | 400.37     | 400.41     | 400.45     |   0.1 | 76.99
+Other   |            | 0.1895     |            |       |  0.04
+
+Nlocal:         526848 ave      526868 max      526828 min
+Histogram: 1 0 0 0 1 1 0 0 0 1
+Nghost:         156396 ave      156437 max      156344 min
+Histogram: 1 0 0 1 0 0 0 0 1 1
+Neighs:              0 ave           0 max           0 min
+Histogram: 4 0 0 0 0 0 0 0 0 0
+FullNghs:  1.13808e+08 ave 1.13814e+08 max 1.13799e+08 min
+Histogram: 1 0 0 0 0 0 2 0 0 1
+
+Total # of neighbors = 4.5523144e+08
+Ave neighs/atom = 216.0165
+Neighbor list builds = 10
+Dangerous builds not checked
+write_data      final.${ibead}
+write_data      final.12
+System init for write_data ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Total wall time: 0:09:23
